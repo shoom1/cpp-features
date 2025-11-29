@@ -13,6 +13,7 @@
 #include <sstream>
 #include <type_traits>
 #include <concepts>    // C++20
+#include <format>      // C++20
 #include <print>       // C++23
 
 // ============================================================================

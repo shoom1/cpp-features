@@ -194,7 +194,8 @@ void demo() {
         std::println("  {}", name);
     }
 
-    // Create indices and zip with elements
+    // Note: std::views::enumerate is C++23, shown here for demonstration
+    // If using C++20 only, you would need to use std::views::transform with index tracking
     auto indexed_expensive = products
         | std::views::filter([](const Product& p) { return p.price > 100.0; })
         | std::views::enumerate;  // C++23

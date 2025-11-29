@@ -14,6 +14,7 @@
 #include <memory>
 #include <span>       // C++20
 #include <print>      // C++23
+#include <expected>   // C++23
 #include <concepts>   // C++20
 
 // ============================================================================

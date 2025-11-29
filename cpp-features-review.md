@@ -203,7 +203,9 @@ void process(std::string_view sv) {
 
 process("hello");                        // String literal
 process(std::string("world"));           // std::string
-process(std::string_view("view", 4));    // First 4 chars
+
+const char* text = "erview";
+process(std::string_view(text, 4));      // First 4 chars: "view"
 ```
 
 ### 7. `if constexpr`
