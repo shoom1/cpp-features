@@ -8,11 +8,11 @@ This project provides a comprehensive exploration of modern C++ features from C+
 ## Contents
 
 - **cpp-features-review.md** - Comprehensive feature reference covering C++14 to C++26
-- **example1_error_handling.cpp** - Evolution of error handling (C++11 → C++17 → C++23)
-- **example2_container_processing.cpp** - Data processing evolution (C++11 → C++17 → C++20 → C++23)
-- **example3_type_safe_variants.cpp** - Type-safe unions and variants (C++11 → C++17 → C++20 → C++26)
-- **example4_resource_management.cpp** - Resource management and RAII (C++11 → C++14 → C++20 → C++23)
-- **example5_metaprogramming.cpp** - Template metaprogramming evolution (C++11 → C++17 → C++20 → C++23 → C++26)
+- **src/example1_error_handling.cpp** - Evolution of error handling (C++11 → C++17 → C++23)
+- **src/example2_container_processing.cpp** - Data processing evolution (C++11 → C++17 → C++20 → C++23)
+- **src/example3_type_safe_variants.cpp** - Type-safe unions and variants (C++11 → C++17 → C++20 → C++26)
+- **src/example4_resource_management.cpp** - Resource management and RAII (C++11 → C++14 → C++20 → C++23)
+- **src/example5_metaprogramming.cpp** - Template metaprogramming evolution (C++11 → C++17 → C++20 → C++23 → C++26)
 
 ## Compilation Requirements
 
@@ -34,30 +34,37 @@ The examples require a modern C++ compiler with support for C++20 and C++23 feat
 #### Using GCC:
 ```bash
 # Example 1 - Error Handling
-g++ -std=c++23 -Wall -Wextra example1_error_handling.cpp -o example1
+g++ -std=c++23 -Wall -Wextra src/example1_error_handling.cpp -o example1
 
 # Example 2 - Container Processing
-g++ -std=c++23 -Wall -Wextra example2_container_processing.cpp -o example2
+g++ -std=c++23 -Wall -Wextra src/example2_container_processing.cpp -o example2
 
 # Example 3 - Type-Safe Variants
-g++ -std=c++23 -Wall -Wextra example3_type_safe_variants.cpp -o example3
+g++ -std=c++23 -Wall -Wextra src/example3_type_safe_variants.cpp -o example3
 
 # Example 4 - Resource Management
-g++ -std=c++23 -Wall -Wextra example4_resource_management.cpp -o example4
+g++ -std=c++23 -Wall -Wextra src/example4_resource_management.cpp -o example4
 
 # Example 5 - Metaprogramming
-g++ -std=c++23 -Wall -Wextra example5_metaprogramming.cpp -o example5
+g++ -std=c++23 -Wall -Wextra src/example5_metaprogramming.cpp -o example5
+
+# Or compile all at once
+g++ -std=c++23 -Wall -Wextra src/example1_error_handling.cpp -o example1 && \
+g++ -std=c++23 -Wall -Wextra src/example2_container_processing.cpp -o example2 && \
+g++ -std=c++23 -Wall -Wextra src/example3_type_safe_variants.cpp -o example3 && \
+g++ -std=c++23 -Wall -Wextra src/example4_resource_management.cpp -o example4 && \
+g++ -std=c++23 -Wall -Wextra src/example5_metaprogramming.cpp -o example5
 ```
 
 #### Using Clang:
 ```bash
-clang++ -std=c++23 -Wall -Wextra example1_error_handling.cpp -o example1
+clang++ -std=c++23 -Wall -Wextra src/example1_error_handling.cpp -o example1
 # (similar for other examples)
 ```
 
 #### Using MSVC (Command Line):
 ```cmd
-cl /std:c++latest /EHsc /W4 example1_error_handling.cpp
+cl /std:c++latest /EHsc /W4 src\example1_error_handling.cpp
 ```
 
 ### Platform-Specific Notes
