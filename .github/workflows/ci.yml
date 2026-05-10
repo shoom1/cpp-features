@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-run:
+    name: Build and run examples (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: GCC 14
+            cxx: g++-14
+            package: g++-14
+          - compiler: Clang 18
+            cxx: clang++-18
+            package: clang-18
+
+    env:
+      CXX: ${{ matrix.cxx }}
+      CXXFLAGS: -std=c++23 -Wall -Wextra -pedantic -pthread
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y "${{ matrix.package }}"
+
+      - name: Show compiler version
+        run: |
+          "${CXX}" --version
+
+      - name: Compile examples
+        run: |
+          mkdir -p build
+
+          for source in src/*.cpp; do
+            executable="build/$(basename "${source}" .cpp)"
+            echo "Compiling ${source} -> ${executable}"
+            "${CXX}" ${CXXFLAGS} "${source}" -o "${executable}"
+          done
+
+      - name: Run examples
+        run: |
+          for executable in build/*; do
+            echo "::group::${executable}"
+            "${executable}"
+            echo "::endgroup::"
+          done

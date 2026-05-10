@@ -1,147 +1,136 @@
 /**
- * Example 3: Type-Safe Variants Evolution
+ * Example 3: Type-Safe Alternatives Evolution
  *
- * This example shows the evolution from C-style unions to modern type-safe variants.
- * We implement a simple expression evaluator using different approaches.
+ * This example uses a tiny expression tree to show a realistic progression:
+ * - C++11: object-oriented AST with unique_ptr and virtual functions
+ * - C++17: std::variant for closed sets of alternatives
+ * - C++20: concepts to make visitor requirements explicit
  *
- * Task: Represent and evaluate mathematical expressions (numbers, addition, multiplication)
+ * Task: Represent and evaluate numbers, addition, and multiplication.
  */
 
+#include <concepts>
 #include <iostream>
-#include <string>
 #include <memory>
-#include <variant>     // C++17
-#include <print>       // C++23
-#include <vector>
+#include <print>
+#include <utility>
+#include <variant>
 
 // ============================================================================
-// C++11 Style: Tagged unions (manual type tracking)
+// C++11 Style: Polymorphic expression tree
 // ============================================================================
 
 namespace cpp11_style {
 
-enum class ExprType {
-    Number,
-    Addition,
-    Multiplication
+class Expr {
+public:
+    virtual ~Expr() = default;
+    virtual double evaluate() const = 0;
+    virtual void print(std::ostream& out) const = 0;
 };
 
-struct Expr;  // Forward declaration
+using ExprPtr = std::unique_ptr<Expr>;
 
-struct Addition {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
-};
+class Number final : public Expr {
+    double value_;
 
-struct Multiplication {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
-};
+public:
+    explicit Number(double value) : value_(value) {}
 
-struct Expr {
-    ExprType type;
-
-    union {
-        double number;
-        Addition addition;
-        Multiplication multiplication;
-    };
-
-    // Manual constructor/destructor needed for non-trivial types
-    Expr(double n) : type(ExprType::Number), number(n) {}
-
-    Expr(Addition&& add) : type(ExprType::Addition), addition(std::move(add)) {}
-
-    Expr(Multiplication&& mul) : type(ExprType::Multiplication),
-                                  multiplication(std::move(mul)) {}
-
-    ~Expr() {
-        // Manual cleanup based on type
-        switch (type) {
-            case ExprType::Number:
-                break;  // No cleanup needed
-            case ExprType::Addition:
-                addition.~Addition();
-                break;
-            case ExprType::Multiplication:
-                multiplication.~Multiplication();
-                break;
-        }
+    double evaluate() const override {
+        return value_;
     }
 
-    // Delete copy operations (too complex to implement correctly)
-    Expr(const Expr&) = delete;
-    Expr& operator=(const Expr&) = delete;
-
-    // Move operations also complex
-    Expr(Expr&& other) : type(other.type) {
-        switch (type) {
-            case ExprType::Number:
-                number = other.number;
-                break;
-            case ExprType::Addition:
-                new (&addition) Addition(std::move(other.addition));
-                break;
-            case ExprType::Multiplication:
-                new (&multiplication) Multiplication(std::move(other.multiplication));
-                break;
-        }
+    void print(std::ostream& out) const override {
+        out << value_;
     }
 };
 
-double evaluate(const Expr& expr) {
-    switch (expr.type) {
-        case ExprType::Number:
-            return expr.number;
+class Addition final : public Expr {
+    ExprPtr left_;
+    ExprPtr right_;
 
-        case ExprType::Addition:
-            return evaluate(*expr.addition.left) +
-                   evaluate(*expr.addition.right);
+public:
+    Addition(ExprPtr left, ExprPtr right)
+        : left_(std::move(left)), right_(std::move(right)) {}
 
-        case ExprType::Multiplication:
-            return evaluate(*expr.multiplication.left) *
-                   evaluate(*expr.multiplication.right);
+    double evaluate() const override {
+        return left_->evaluate() + right_->evaluate();
     }
-    return 0.0;  // Should never reach
+
+    void print(std::ostream& out) const override {
+        out << "(";
+        left_->print(out);
+        out << " + ";
+        right_->print(out);
+        out << ")";
+    }
+};
+
+class Multiplication final : public Expr {
+    ExprPtr left_;
+    ExprPtr right_;
+
+public:
+    Multiplication(ExprPtr left, ExprPtr right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+
+    double evaluate() const override {
+        return left_->evaluate() * right_->evaluate();
+    }
+
+    void print(std::ostream& out) const override {
+        out << "(";
+        left_->print(out);
+        out << " * ";
+        right_->print(out);
+        out << ")";
+    }
+};
+
+ExprPtr number(double value) {
+    return ExprPtr(new Number(value));
+}
+
+ExprPtr add(ExprPtr left, ExprPtr right) {
+    return ExprPtr(new Addition(std::move(left), std::move(right)));
+}
+
+ExprPtr multiply(ExprPtr left, ExprPtr right) {
+    return ExprPtr(new Multiplication(std::move(left), std::move(right)));
 }
 
 void demo() {
-    std::cout << "=== C++11 Style: Tagged Unions ===\n\n";
+    std::cout << "=== C++11 Style: Polymorphic AST ===\n\n";
 
-    // Build expression: (2 + 3) * 4
-    auto two = std::make_unique<Expr>(2.0);
-    auto three = std::make_unique<Expr>(3.0);
-    auto add = std::make_unique<Expr>(
-        Addition{std::move(two), std::move(three)}
+    ExprPtr expr = multiply(
+        add(number(2.0), number(3.0)),
+        number(4.0)
     );
 
-    auto four = std::make_unique<Expr>(4.0);
-    Expr expr(Multiplication{std::move(add), std::move(four)});
+    std::cout << "Expression: ";
+    expr->print(std::cout);
+    std::cout << "\nResult: " << expr->evaluate() << "\n";
 
-    double result = evaluate(expr);
-    std::cout << "Result: " << result << "\n";  // 20
-
-    // Problems:
-    // - Manual type tracking (error-prone)
-    // - Manual lifetime management
-    // - Easy to access wrong union member
-    // - Complex copy/move semantics
-    // - No compile-time type safety
-    // - Verbose and error-prone
-
-    std::cout << "\n";
+    std::cout << "\nTradeoffs:\n";
+    std::cout << "  - Good fit when users can add new expression node types\n";
+    std::cout << "  - Requires heap allocation and virtual dispatch\n";
+    std::cout << "  - Adding a new operation means adding another virtual function\n\n";
 }
 
 } // namespace cpp11_style
 
 // ============================================================================
-// C++17 Style: std::variant (type-safe discriminated union)
+// C++17 Style: std::variant for a closed set of node types
 // ============================================================================
 
 namespace cpp17_style {
 
-// Forward declaration for recursive variant
 struct Expr;
+
+struct Number {
+    double value;
+};
 
 struct Addition {
     std::unique_ptr<Expr> left;
@@ -153,132 +142,104 @@ struct Multiplication {
     std::unique_ptr<Expr> right;
 };
 
-// Variant automatically handles type tracking and lifetime
 struct Expr {
-    std::variant<double, Addition, Multiplication> value;
+    std::variant<Number, Addition, Multiplication> node;
 
-    Expr(double n) : value(n) {}
-    Expr(Addition&& add) : value(std::move(add)) {}
-    Expr(Multiplication&& mul) : value(std::move(mul)) {}
+    explicit Expr(Number value) : node(value) {}
+    explicit Expr(Addition value) : node(std::move(value)) {}
+    explicit Expr(Multiplication value) : node(std::move(value)) {}
 };
 
-// Using std::visit for type-safe pattern matching
-struct EvaluateVisitor {
-    double operator()(double n) const {
-        return n;
-    }
-
-    double operator()(const Addition& add) const {
-        return evaluate(*add.left) + evaluate(*add.right);
-    }
-
-    double operator()(const Multiplication& mul) const {
-        return evaluate(*mul.left) * evaluate(*mul.right);
-    }
+template<class... Ts>
+struct Overloaded : Ts... {
+    using Ts::operator()...;
 };
+
+template<class... Ts>
+Overloaded(Ts...) -> Overloaded<Ts...>;
+
+std::unique_ptr<Expr> number(double value) {
+    return std::make_unique<Expr>(Number{value});
+}
+
+std::unique_ptr<Expr> add(std::unique_ptr<Expr> left, std::unique_ptr<Expr> right) {
+    return std::make_unique<Expr>(
+        Addition{std::move(left), std::move(right)}
+    );
+}
+
+std::unique_ptr<Expr> multiply(std::unique_ptr<Expr> left, std::unique_ptr<Expr> right) {
+    return std::make_unique<Expr>(
+        Multiplication{std::move(left), std::move(right)}
+    );
+}
 
 double evaluate(const Expr& expr) {
-    return std::visit(EvaluateVisitor{}, expr.value);
+    return std::visit(Overloaded{
+        [](const Number& number) {
+            return number.value;
+        },
+        [](const Addition& addition) {
+            return evaluate(*addition.left) + evaluate(*addition.right);
+        },
+        [](const Multiplication& multiplication) {
+            return evaluate(*multiplication.left) * evaluate(*multiplication.right);
+        }
+    }, expr.node);
 }
-
-// Alternative: Generic lambda visitor
-double evaluate_lambda(const Expr& expr) {
-    return std::visit([](const auto& val) -> double {
-        using T = std::decay_t<decltype(val)>;
-
-        if constexpr (std::is_same_v<T, double>) {
-            return val;
-        }
-        else if constexpr (std::is_same_v<T, Addition>) {
-            return evaluate_lambda(*val.left) + evaluate_lambda(*val.right);
-        }
-        else if constexpr (std::is_same_v<T, Multiplication>) {
-            return evaluate_lambda(*val.left) * evaluate_lambda(*val.right);
-        }
-    }, expr.value);
-}
-
-// Visitor for printing expressions
-struct PrintVisitor {
-    void operator()(double n) const {
-        std::cout << n;
-    }
-
-    void operator()(const Addition& add) const {
-        std::cout << "(";
-        std::visit(PrintVisitor{}, add.left->value);
-        std::cout << " + ";
-        std::visit(PrintVisitor{}, add.right->value);
-        std::cout << ")";
-    }
-
-    void operator()(const Multiplication& mul) const {
-        std::cout << "(";
-        std::visit(PrintVisitor{}, mul.left->value);
-        std::cout << " * ";
-        std::visit(PrintVisitor{}, mul.right->value);
-        std::cout << ")";
-    }
-};
 
 void print(const Expr& expr) {
-    std::visit(PrintVisitor{}, expr.value);
+    std::visit(Overloaded{
+        [](const Number& number) {
+            std::cout << number.value;
+        },
+        [](const Addition& addition) {
+            std::cout << "(";
+            print(*addition.left);
+            std::cout << " + ";
+            print(*addition.right);
+            std::cout << ")";
+        },
+        [](const Multiplication& multiplication) {
+            std::cout << "(";
+            print(*multiplication.left);
+            std::cout << " * ";
+            print(*multiplication.right);
+            std::cout << ")";
+        }
+    }, expr.node);
 }
 
 void demo() {
     std::cout << "=== C++17 Style: std::variant ===\n\n";
 
-    // Build expression: (2 + 3) * 4
-    auto two = std::make_unique<Expr>(2.0);
-    auto three = std::make_unique<Expr>(3.0);
-    auto add = std::make_unique<Expr>(
-        Addition{std::move(two), std::move(three)}
+    auto expr = multiply(
+        add(number(2.0), number(3.0)),
+        number(4.0)
     );
 
-    auto four = std::make_unique<Expr>(4.0);
-    Expr expr(Multiplication{std::move(add), std::move(four)});
-
     std::cout << "Expression: ";
-    print(expr);
-    std::cout << "\n";
+    print(*expr);
+    std::cout << "\nResult: " << evaluate(*expr) << "\n";
 
-    double result = evaluate(expr);
-    std::cout << "Result (visitor): " << result << "\n";
-
-    // Test with lambda visitor
-    auto five = std::make_unique<Expr>(5.0);
-    auto six = std::make_unique<Expr>(6.0);
-    Expr expr2(Addition{std::move(five), std::move(six)});
-
-    double result2 = evaluate_lambda(expr2);
-    std::cout << "Result (lambda): " << result2 << "\n";
-
-    // Advantages:
-    // - Type-safe: can't access wrong type
-    // - Automatic lifetime management
-    // - Proper copy/move semantics
-    // - Exhaustive matching with std::visit
-    // - Compile-time errors for missing cases
-    // - Exception on wrong type access
-
-    std::cout << "\n";
+    std::cout << "\nTradeoffs:\n";
+    std::cout << "  - Good fit when the set of node types is known and closed\n";
+    std::cout << "  - Adding a new operation is a new visitor, not a base-class change\n";
+    std::cout << "  - Adding a new node type requires updating visitors\n\n";
 }
 
 } // namespace cpp17_style
 
 // ============================================================================
-// C++20 Style: Enhanced variants with concepts
+// C++20 Style: Concepts for visitor contracts
 // ============================================================================
 
 namespace cpp20_style {
 
-// Forward declaration
 struct Expr;
 
-// Use concepts to constrain visitor types
-template<typename T>
-concept ExprVisitor = requires(T visitor, const Expr& expr) {
-    { visitor(0.0) } -> std::convertible_to<double>;
+struct Number {
+    double value;
 };
 
 struct Addition {
@@ -291,262 +252,129 @@ struct Multiplication {
     std::unique_ptr<Expr> right;
 };
 
-struct Subtraction {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
+struct Negation {
+    std::unique_ptr<Expr> operand;
 };
 
 struct Expr {
-    std::variant<double, Addition, Multiplication, Subtraction> value;
+    std::variant<Number, Addition, Multiplication, Negation> node;
 
-    Expr(double n) : value(n) {}
-    Expr(Addition&& add) : value(std::move(add)) {}
-    Expr(Multiplication&& mul) : value(std::move(mul)) {}
-    Expr(Subtraction&& sub) : value(std::move(sub)) {}
+    explicit Expr(Number value) : node(value) {}
+    explicit Expr(Addition value) : node(std::move(value)) {}
+    explicit Expr(Multiplication value) : node(std::move(value)) {}
+    explicit Expr(Negation value) : node(std::move(value)) {}
 };
 
-// Overload pattern helper (C++20 feature often used with variants)
 template<class... Ts>
-struct overload : Ts... {
+struct Overloaded : Ts... {
     using Ts::operator()...;
 };
 
-// Deduction guide
 template<class... Ts>
-overload(Ts...) -> overload<Ts...>;
+Overloaded(Ts...) -> Overloaded<Ts...>;
+
+template<typename Visitor>
+concept EvaluatesExpression =
+    requires(Visitor visitor,
+             const Number& number,
+             const Addition& addition,
+             const Multiplication& multiplication,
+             const Negation& negation) {
+        { visitor(number) } -> std::convertible_to<double>;
+        { visitor(addition) } -> std::convertible_to<double>;
+        { visitor(multiplication) } -> std::convertible_to<double>;
+        { visitor(negation) } -> std::convertible_to<double>;
+    };
+
+std::unique_ptr<Expr> number(double value) {
+    return std::make_unique<Expr>(Number{value});
+}
+
+std::unique_ptr<Expr> add(std::unique_ptr<Expr> left, std::unique_ptr<Expr> right) {
+    return std::make_unique<Expr>(
+        Addition{std::move(left), std::move(right)}
+    );
+}
+
+std::unique_ptr<Expr> multiply(std::unique_ptr<Expr> left, std::unique_ptr<Expr> right) {
+    return std::make_unique<Expr>(
+        Multiplication{std::move(left), std::move(right)}
+    );
+}
+
+std::unique_ptr<Expr> negate(std::unique_ptr<Expr> operand) {
+    return std::make_unique<Expr>(Negation{std::move(operand)});
+}
+
+template<EvaluatesExpression Visitor>
+double evaluate_with(const Expr& expr, Visitor&& visitor) {
+    return std::visit(std::forward<Visitor>(visitor), expr.node);
+}
 
 double evaluate(const Expr& expr) {
-    return std::visit(overload{
-        [](double n) { return n; },
-        [](const Addition& add) {
-            return evaluate(*add.left) + evaluate(*add.right);
+    return evaluate_with(expr, Overloaded{
+        [](const Number& number) {
+            return number.value;
         },
-        [](const Multiplication& mul) {
-            return evaluate(*mul.left) * evaluate(*mul.right);
+        [](const Addition& addition) {
+            return evaluate(*addition.left) + evaluate(*addition.right);
         },
-        [](const Subtraction& sub) {
-            return evaluate(*sub.left) - evaluate(*sub.right);
+        [](const Multiplication& multiplication) {
+            return evaluate(*multiplication.left) * evaluate(*multiplication.right);
+        },
+        [](const Negation& negation) {
+            return -evaluate(*negation.operand);
         }
-    }, expr.value);
+    });
 }
 
 void print(const Expr& expr) {
-    std::visit(overload{
-        [](double n) { std::print("{}", n); },
-        [](const Addition& add) {
+    std::visit(Overloaded{
+        [](const Number& number) {
+            std::print("{}", number.value);
+        },
+        [](const Addition& addition) {
             std::print("(");
-            print(*add.left);
+            print(*addition.left);
             std::print(" + ");
-            print(*add.right);
+            print(*addition.right);
             std::print(")");
         },
-        [](const Multiplication& mul) {
+        [](const Multiplication& multiplication) {
             std::print("(");
-            print(*mul.left);
+            print(*multiplication.left);
             std::print(" * ");
-            print(*mul.right);
+            print(*multiplication.right);
             std::print(")");
         },
-        [](const Subtraction& sub) {
-            std::print("(");
-            print(*sub.left);
-            std::print(" - ");
-            print(*sub.right);
+        [](const Negation& negation) {
+            std::print("-(");
+            print(*negation.operand);
             std::print(")");
         }
-    }, expr.value);
+    }, expr.node);
 }
 
 void demo() {
-    std::println("=== C++20 Style: Variants with Overload Pattern ===\n");
+    std::println("=== C++20 Style: Constrained Visitors ===\n");
 
-    // Build expression: (10 - 3) * (2 + 4)
-    auto ten = std::make_unique<Expr>(10.0);
-    auto three = std::make_unique<Expr>(3.0);
-    auto sub = std::make_unique<Expr>(
-        Subtraction{std::move(ten), std::move(three)}
+    auto expr = multiply(
+        negate(add(number(2.0), number(3.0))),
+        number(4.0)
     );
-
-    auto two = std::make_unique<Expr>(2.0);
-    auto four = std::make_unique<Expr>(4.0);
-    auto add = std::make_unique<Expr>(
-        Addition{std::move(two), std::move(four)}
-    );
-
-    Expr expr(Multiplication{std::move(sub), std::move(add)});
 
     std::print("Expression: ");
-    print(expr);
-    std::println("");
+    print(*expr);
+    std::println("\nResult: {}", evaluate(*expr));
 
-    double result = evaluate(expr);
-    std::println("Result: {}", result);  // 42
-
-    // Advantages of overload pattern:
-    // - Cleaner syntax than separate visitor struct
-    // - Lambdas can capture local variables
-    // - Each case is defined inline
-    // - Still type-safe and exhaustive
-
+    std::println("\nTradeoffs:");
+    std::println("  - Concepts make visitor requirements part of the API");
+    std::println("  - Missing cases fail at the call site with clearer diagnostics");
+    std::println("  - The variant model is still best for closed sets of alternatives");
     std::println("");
 }
 
 } // namespace cpp20_style
-
-// ============================================================================
-// C++26 Style: Pattern Matching (Proposed)
-// ============================================================================
-
-namespace cpp26_style {
-
-// NOTE: This is proposed syntax for C++26 pattern matching
-// It may not compile with current compilers
-
-struct Expr;
-
-struct Addition {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
-};
-
-struct Multiplication {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
-};
-
-struct Subtraction {
-    std::unique_ptr<Expr> left;
-    std::unique_ptr<Expr> right;
-};
-
-struct Expr {
-    std::variant<double, Addition, Multiplication, Subtraction> value;
-
-    Expr(double n) : value(n) {}
-    Expr(Addition&& add) : value(std::move(add)) {}
-    Expr(Multiplication&& mul) : value(std::move(mul)) {}
-    Expr(Subtraction&& sub) : value(std::move(sub)) {}
-};
-
-/*
-// Proposed C++26 pattern matching syntax:
-
-double evaluate(const Expr& expr) {
-    inspect (expr.value) {
-        <double> n: return n;
-
-        <Addition> [left, right]: {
-            return evaluate(*left) + evaluate(*right);
-        }
-
-        <Multiplication> [left, right]: {
-            return evaluate(*left) * evaluate(*right);
-        }
-
-        <Subtraction> [left, right]: {
-            return evaluate(*left) - evaluate(*right);
-        }
-    }
-}
-
-void print(const Expr& expr) {
-    inspect (expr.value) {
-        <double> n: std::print("{}", n);
-
-        <Addition> [left, right]: {
-            std::print("(");
-            print(*left);
-            std::print(" + ");
-            print(*right);
-            std::print(")");
-        }
-
-        <Multiplication> [left, right]: {
-            std::print("(");
-            print(*left);
-            std::print(" * ");
-            print(*right);
-            std::print(")");
-        }
-
-        <Subtraction> [left, right]: {
-            std::print("(");
-            print(*left);
-            std::print(" - ");
-            print(*right);
-            std::print(")");
-        }
-    }
-}
-
-// Even more advanced: Pattern matching with guards
-
-std::string classify(const Expr& expr) {
-    inspect (expr.value) {
-        <double> n if (n == 0.0): return "zero";
-        <double> n if (n < 0.0): return "negative";
-        <double> n if (n > 0.0): return "positive";
-
-        <Addition> _: return "sum";
-        <Multiplication> _: return "product";
-        <Subtraction> _: return "difference";
-    }
-}
-
-// Nested pattern matching
-bool isConstant(const Expr& expr) {
-    inspect (expr.value) {
-        <double> _: return true;
-
-        <Addition> [<double> _, <double> _]: return true;
-
-        _: return false;
-    }
-}
-*/
-
-void demo() {
-    std::println("=== C++26 Style: Pattern Matching (Proposed) ===\n");
-
-    std::println("Pattern matching will provide:");
-    std::println("  - Natural syntax like match in Rust/ML");
-    std::println("  - Structural decomposition inline");
-    std::println("  - Pattern guards (if conditions)");
-    std::println("  - Nested patterns");
-    std::println("  - More concise than std::visit");
-    std::println("  - Compiler-enforced exhaustiveness");
-
-    std::println("\nSee comments in source for proposed syntax examples.");
-    std::println("");
-}
-
-} // namespace cpp26_style
-
-// ============================================================================
-// Comparison: Same operation in different styles
-// ============================================================================
-
-void comparison_demo() {
-    std::println("=== Comparison: Expression (5 + 3) ===\n");
-
-    // Show how checking type differs across versions
-    std::println("C++11: Manual switch on type tag");
-    std::println("  - Error-prone, can access wrong member");
-    std::println("  - No compile-time safety");
-
-    std::println("\nC++17: std::visit with variant");
-    std::println("  - Type-safe, compiler-enforced");
-    std::println("  - Requires visitor struct or lambda");
-
-    std::println("\nC++20: Overload pattern");
-    std::println("  - Cleaner inline lambdas");
-    std::println("  - Still type-safe");
-
-    std::println("\nC++26: Pattern matching");
-    std::println("  - Most concise and natural");
-    std::println("  - Built-in language feature");
-    std::println("  - Supports complex patterns");
-}
 
 // ============================================================================
 // Main
@@ -556,8 +384,6 @@ int main() {
     cpp11_style::demo();
     cpp17_style::demo();
     cpp20_style::demo();
-    cpp26_style::demo();
-    comparison_demo();
 
     return 0;
 }

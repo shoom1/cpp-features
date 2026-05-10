@@ -1,19 +1,24 @@
 /**
  * Example 1: Error Handling Evolution
  *
- * This example shows how error handling has evolved from C++11 to C++23.
- * We implement a simple user database lookup with different error handling strategies.
+ * This example compares realistic C++ error-handling APIs:
+ * - C++11: exceptions for failure, or error codes in no-exception codebases
+ * - C++17: std::optional when "no value" is a normal outcome
+ * - C++23: std::expected when callers need typed failure information
  */
 
+#include <cctype>
+#include <expected>     // C++23
 #include <iostream>
-#include <string>
 #include <map>
 #include <optional>     // C++17
-#include <expected>     // C++23
 #include <print>        // C++23
+#include <stdexcept>
+#include <string>
+#include <string_view>
 
 // ============================================================================
-// C++11 Style: Error codes and output parameters
+// C++11 Style: Exceptions, or error codes for no-exception APIs
 // ============================================================================
 
 namespace cpp11_style {
@@ -25,10 +30,26 @@ enum class ErrorCode {
     DatabaseError
 };
 
+const char* errorMessage(ErrorCode code) noexcept {
+    switch (code) {
+        case ErrorCode::Success: return "success";
+        case ErrorCode::UserNotFound: return "user not found";
+        case ErrorCode::InvalidId: return "invalid user ID";
+        case ErrorCode::DatabaseError: return "database error";
+    }
+    return "unknown error";
+}
+
 struct User {
     int id;
     std::string name;
     std::string email;
+};
+
+class UserNotFound : public std::runtime_error {
+public:
+    explicit UserNotFound(int id)
+        : std::runtime_error("user " + std::to_string(id) + " was not found") {}
 };
 
 class UserDatabase {
@@ -41,8 +62,22 @@ public:
         users_[3] = {3, "Charlie", "charlie@example.com"};
     }
 
-    // Old style: return error code, output via pointer parameter
-    ErrorCode findUser(int id, User* out_user) const {
+    // Common C++11 style: return the value and report failure with exceptions.
+    User findUserOrThrow(int id) const {
+        if (id <= 0) {
+            throw std::invalid_argument("user ID must be positive");
+        }
+
+        auto it = users_.find(id);
+        if (it == users_.end()) {
+            throw UserNotFound(id);
+        }
+
+        return it->second;
+    }
+
+    // No-exception style: return status and write through a non-null reference.
+    ErrorCode tryFindUser(int id, User& out_user) const {
         if (id <= 0) {
             return ErrorCode::InvalidId;
         }
@@ -52,54 +87,55 @@ public:
             return ErrorCode::UserNotFound;
         }
 
-        if (out_user) {
-            *out_user = it->second;
-        }
+        out_user = it->second;
         return ErrorCode::Success;
-    }
-
-    // Alternative: return pointer (nullptr on error)
-    const User* getUserPtr(int id) const {
-        if (id <= 0) return nullptr;
-
-        auto it = users_.find(id);
-        return (it != users_.end()) ? &it->second : nullptr;
     }
 };
 
 void demo() {
-    std::cout << "=== C++11 Style Error Handling ===\n\n";
+    std::cout << "=== C++11 Style: Exceptions or Error Codes ===\n\n";
 
     UserDatabase db;
 
-    // Method 1: Error code with output parameter
+    // Exception-based API: idiomatic when failures should interrupt normal flow.
+    try {
+        User user = db.findUserOrThrow(1);
+        std::cout << "Exception API found: " << user.name
+                  << " (" << user.email << ")\n";
+    } catch (const std::exception& e) {
+        std::cout << "Exception API error: " << e.what() << "\n";
+    }
+
+    try {
+        db.findUserOrThrow(999);
+    } catch (const std::exception& e) {
+        std::cout << "Exception API missing user: " << e.what() << "\n";
+    }
+
+    // Error-code API: useful in low-level or no-exception codebases.
     {
-        User user;
-        ErrorCode result = db.findUser(1, &user);
+        User user{};
+        ErrorCode result = db.tryFindUser(2, user);
 
         if (result == ErrorCode::Success) {
-            std::cout << "Found user: " << user.name << " (" << user.email << ")\n";
+            std::cout << "Error-code API found: " << user.name << "\n";
         } else {
-            std::cout << "Error code: " << static_cast<int>(result) << "\n";
+            std::cout << "Error-code API failed: " << errorMessage(result) << "\n";
         }
     }
 
-    // Method 2: Pointer return (nullptr check)
     {
-        const User* user = db.getUserPtr(999);
-        if (user) {
-            std::cout << "Found user: " << user->name << "\n";
-        } else {
-            std::cout << "User not found (nullptr)\n";
+        User user{};
+        ErrorCode result = db.tryFindUser(-5, user);
+        if (result != ErrorCode::Success) {
+            std::cout << "Error-code API failed: " << errorMessage(result) << "\n";
         }
     }
 
-    // Problems with this approach:
-    // - Easy to forget error checking
-    // - Unclear API (what does nullptr mean?)
-    // - No error details when using pointer return
-    // - Output parameters are less readable
-    // - Can't use in functional style
+    // Tradeoffs:
+    // - Exceptions keep the success path clean, but failures are not visible in the type.
+    // - Error codes make failures explicit, but every caller must check them.
+    // - Output references avoid nullable output parameters but are still less composable.
 
     std::cout << "\n";
 }
@@ -107,7 +143,7 @@ void demo() {
 } // namespace cpp11_style
 
 // ============================================================================
-// C++17 Style: std::optional
+// C++17 Style: std::optional for normal absence
 // ============================================================================
 
 namespace cpp17_style {
@@ -118,69 +154,58 @@ struct User {
     std::string email;
 };
 
-class UserDatabase {
-    std::map<int, User> users_;
+class UserCache {
+    std::map<int, User> cached_users_;
 
 public:
-    UserDatabase() {
-        users_[1] = {1, "Alice", "alice@example.com"};
-        users_[2] = {2, "Bob", "bob@example.com"};
-        users_[3] = {3, "Charlie", "charlie@example.com"};
+    UserCache() {
+        cached_users_[1] = {1, "Alice", "alice@example.com"};
+        cached_users_[2] = {2, "Bob", "bob@example.com"};
     }
 
-    // C++17: std::optional clearly indicates "value or nothing"
-    std::optional<User> findUser(int id) const {
-        if (id <= 0) {
-            return std::nullopt;  // Invalid ID
-        }
-
-        auto it = users_.find(id);
-        if (it == users_.end()) {
-            return std::nullopt;  // Not found
+    // std::optional is appropriate when absence is expected and needs no reason.
+    std::optional<User> findCachedUser(int id) const {
+        auto it = cached_users_.find(id);
+        if (it == cached_users_.end()) {
+            return std::nullopt;
         }
 
         return it->second;
     }
 
-    // Can chain optional operations
-    std::optional<std::string> getUserEmail(int id) const {
-        auto user = findUser(id);
-        if (user) {
-            return user->email;
+    std::optional<std::string> cachedEmailFor(int id) const {
+        auto user = findCachedUser(id);
+        if (!user) {
+            return std::nullopt;
         }
-        return std::nullopt;
+
+        return user->email;
     }
 };
 
 void demo() {
-    std::cout << "=== C++17 Style: std::optional ===\n\n";
+    std::cout << "=== C++17 Style: std::optional for Normal Absence ===\n\n";
 
-    UserDatabase db;
+    UserCache cache;
 
-    // Clean value-or-not checking
-    if (auto user = db.findUser(1)) {
-        std::cout << "Found user: " << user->name << " (" << user->email << ")\n";
-    } else {
-        std::cout << "User not found\n";
+    if (auto user = cache.findCachedUser(1)) {
+        std::cout << "Cache hit: " << user->name
+                  << " (" << user->email << ")\n";
     }
 
-    // Using value_or for defaults
-    auto user = db.findUser(999);
-    std::string name = user.has_value() ? user->name : "Unknown";
-    std::cout << "User name: " << name << "\n";
+    if (auto user = cache.findCachedUser(999)) {
+        std::cout << "Cache hit: " << user->name << "\n";
+    } else {
+        std::cout << "Cache miss: fetch from the database if needed\n";
+    }
 
-    // Functional style
-    auto email = db.getUserEmail(2);
-    std::cout << "Email: " << email.value_or("no email") << "\n";
+    std::cout << "Cached email: "
+              << cache.cachedEmailFor(2).value_or("not cached") << "\n";
 
-    // Advantages over C++11:
-    // - Clear intent: either has value or doesn't
-    // - No nullptr dereferencing danger
-    // - Works with value types (no pointers needed)
-    // - Supports functional patterns
-    //
-    // Limitation:
-    // - Can't distinguish WHY there's no value (invalid ID vs not found)
+    // Takeaway:
+    // - optional<T> means "maybe T"; it is not an error-reporting type.
+    // - Good fit: cache miss, optional config value, optional relationship.
+    // - Poor fit: invalid input, permission failure, I/O failure, database outage.
 
     std::cout << "\n";
 }
@@ -188,7 +213,7 @@ void demo() {
 } // namespace cpp17_style
 
 // ============================================================================
-// C++23 Style: std::expected
+// C++23 Style: std::expected for typed recoverable failures
 // ============================================================================
 
 namespace cpp23_style {
@@ -202,15 +227,15 @@ struct User {
 enum class UserError {
     InvalidId,
     NotFound,
-    DatabaseError,
+    MissingEmail,
     PermissionDenied
 };
 
-std::string errorMessage(UserError error) {
+std::string_view errorMessage(UserError error) noexcept {
     switch (error) {
         case UserError::InvalidId: return "Invalid user ID";
         case UserError::NotFound: return "User not found";
-        case UserError::DatabaseError: return "Database error";
+        case UserError::MissingEmail: return "User record has no email";
         case UserError::PermissionDenied: return "Permission denied";
     }
     return "Unknown error";
@@ -223,11 +248,13 @@ public:
     UserDatabase() {
         users_[1] = {1, "Alice", "alice@example.com"};
         users_[2] = {2, "Bob", "bob@example.com"};
-        users_[3] = {3, "Charlie", "charlie@example.com"};
+        users_[3] = {3, "Charlie", ""};
     }
 
-    // C++23: std::expected contains either value OR error
-    std::expected<User, UserError> findUser(int id) const {
+    [[nodiscard]] std::expected<User, UserError> findUser(
+        int id,
+        bool can_view_restricted = true
+    ) const {
         if (id <= 0) {
             return std::unexpected(UserError::InvalidId);
         }
@@ -237,35 +264,40 @@ public:
             return std::unexpected(UserError::NotFound);
         }
 
+        if (id == 3 && !can_view_restricted) {
+            return std::unexpected(UserError::PermissionDenied);
+        }
+
         return it->second;
     }
 
-    // Chaining operations with and_then
-    std::expected<std::string, UserError> getUserEmail(int id) const {
+    [[nodiscard]] std::expected<std::string, UserError> getUserEmail(int id) const {
         return findUser(id)
             .and_then([](const User& user) -> std::expected<std::string, UserError> {
                 if (user.email.empty()) {
-                    return std::unexpected(UserError::DatabaseError);
+                    return std::unexpected(UserError::MissingEmail);
                 }
                 return user.email;
             });
     }
 
-    // Transform operation (maps value, preserves error)
-    std::expected<std::string, UserError> getUserNameUpper(int id) const {
+    [[nodiscard]] std::expected<std::string, UserError> getUserNameUpper(int id) const {
         return findUser(id)
             .transform([](const User& user) {
                 std::string upper = user.name;
-                for (char& c : upper) c = std::toupper(c);
+                for (char& c : upper) {
+                    c = static_cast<char>(
+                        std::toupper(static_cast<unsigned char>(c))
+                    );
+                }
                 return upper;
             });
     }
 
-    // Error transformation
-    std::expected<User, std::string> findUserWithMessage(int id) const {
+    [[nodiscard]] std::expected<User, std::string> findUserWithMessage(int id) const {
         return findUser(id)
             .or_else([](UserError error) -> std::expected<User, std::string> {
-                return std::unexpected(errorMessage(error));
+                return std::unexpected(std::string(errorMessage(error)));
             });
     }
 };
@@ -275,7 +307,6 @@ void demo() {
 
     UserDatabase db;
 
-    // Basic usage: check and access
     {
         auto result = db.findUser(1);
         if (result) {
@@ -285,33 +316,34 @@ void demo() {
         }
     }
 
-    // Error case
     {
         auto result = db.findUser(999);
-        if (result) {
-            std::println("Found: {}", result->name);
-        } else {
-            std::println("Error: {}", errorMessage(result.error()));
+        if (!result) {
+            std::println("Lookup failed: {}", errorMessage(result.error()));
         }
     }
 
-    // Chaining with and_then
     {
-        auto email = db.getUserEmail(2);
+        auto result = db.findUser(3, false);
+        if (!result) {
+            std::println("Restricted lookup failed: {}", errorMessage(result.error()));
+        }
+    }
+
+    {
+        auto email = db.getUserEmail(3);
         if (email) {
             std::println("Email: {}", *email);
         } else {
-            std::println("Failed to get email: {}", errorMessage(email.error()));
+            std::println("Email lookup failed: {}", errorMessage(email.error()));
         }
     }
 
-    // Transform operation
     {
         auto name = db.getUserNameUpper(3);
         std::println("Uppercase name: {}", name.value_or("ERROR"));
     }
 
-    // Error transformation
     {
         auto result = db.findUserWithMessage(-5);
         if (!result) {
@@ -319,13 +351,10 @@ void demo() {
         }
     }
 
-    // Advantages over C++17:
-    // - Explicit error information (not just "no value")
-    // - Type-safe error handling
-    // - Functional composition with and_then, or_else, transform
-    // - Forces error consideration (can't ignore like exceptions)
-    // - Zero overhead (no heap allocation)
-    // - Makes error paths visible in code
+    // Takeaway:
+    // - expected<T, E> means "T or a typed failure E".
+    // - It keeps failures visible in the function signature.
+    // - It composes like optional, but preserves the reason for failure.
 
     std::println("");
 }
@@ -333,43 +362,38 @@ void demo() {
 } // namespace cpp23_style
 
 // ============================================================================
-// Comparison: Same operation in all three styles
+// Comparison: Matching the type to the API semantics
 // ============================================================================
 
 void comparison_demo() {
     std::println("=== Side-by-Side Comparison ===\n");
 
-    // C++11: Verbose, easy to misuse
     {
         cpp11_style::UserDatabase db;
-        cpp11_style::User user;
-        auto result = db.findUser(999, &user);
-
-        if (result == cpp11_style::ErrorCode::Success) {
-            std::println("C++11: {}", user.name);
-        } else {
-            std::println("C++11: Error code {}", static_cast<int>(result));
+        try {
+            auto user = db.findUserOrThrow(999);
+            std::println("C++11 exception API: {}", user.name);
+        } catch (const std::exception& e) {
+            std::println("C++11 exception API: {}", e.what());
         }
     }
 
-    // C++17: Clean, but no error details
     {
-        cpp17_style::UserDatabase db;
-        auto user = db.findUser(999);
+        cpp17_style::UserCache cache;
+        auto user = cache.findCachedUser(999);
 
-        std::println("C++17: {}",
-            user.has_value() ? user->name : "Not found (unknown reason)");
+        std::println("C++17 optional API: {}",
+            user.has_value() ? user->name : "cache miss, not an error");
     }
 
-    // C++23: Best of both worlds
     {
         cpp23_style::UserDatabase db;
         auto user = db.findUser(999);
 
         if (user) {
-            std::println("C++23: {}", user->name);
+            std::println("C++23 expected API: {}", user->name);
         } else {
-            std::println("C++23: {}", errorMessage(user.error()));
+            std::println("C++23 expected API: {}", errorMessage(user.error()));
         }
     }
 }

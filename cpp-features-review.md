@@ -1,6 +1,8 @@
-# C++ Features Review: C++14 to C++26
+# Selected C++ Features Review: C++14 to C++26
 
-A comprehensive guide to modern C++ features introduced from C++14 through C++26.
+A practical guide to selected modern C++ features introduced from C++14 through C++26.
+
+This is not an exhaustive standard reference. It focuses on features that are useful to recognize in real code. C++26 is still in-flight as of May 2026, and compiler/library support varies widely, so the C++26 section separates draft features from proposals that are not yet settled.
 
 ---
 
@@ -19,7 +21,43 @@ double d = lambda(1.5, 2.5);    // Returns 4.0
 std::string s = lambda(std::string("Hello"), std::string(" World")); // "Hello World"
 ```
 
-### 2. Return Type Deduction
+### 2. Generalized Lambda Capture
+
+**Description:** Lambdas can initialize captured variables, including move-only objects.
+
+```cpp
+#include <memory>
+
+auto ptr = std::make_unique<int>(42);
+
+auto task = [value = std::move(ptr)] {
+    return *value;
+};
+
+int result = task();  // 42
+```
+
+This is often called init-capture. It made lambdas much more practical for ownership-aware callbacks and asynchronous work.
+
+### 3. Relaxed `constexpr`
+
+**Description:** `constexpr` functions can contain more normal control flow, including local variables and loops.
+
+```cpp
+constexpr int factorial(int n) {
+    int result = 1;
+
+    for (int i = 2; i <= n; ++i) {
+        result *= i;
+    }
+
+    return result;
+}
+
+static_assert(factorial(5) == 120);
+```
+
+### 4. Return Type Deduction
 
 **Description:** Functions can use `auto` as return type, with the compiler deducing it from return statements.
 
@@ -33,7 +71,7 @@ auto get_vector() {
 }
 ```
 
-### 3. Variable Templates
+### 5. Variable Templates
 
 **Description:** Variables can now be templated, not just functions and classes.
 
@@ -45,7 +83,7 @@ float f = pi<float>;    // 3.14159f
 double d = pi<double>;  // 3.14159265358979
 ```
 
-### 4. Binary Literals
+### 6. Binary Literals
 
 **Description:** Integer literals can now be specified in binary using `0b` prefix.
 
@@ -55,7 +93,7 @@ int value = 0b0000'1111;
 int result = mask & value;  // 0
 ```
 
-### 5. Digit Separators
+### 7. Digit Separators
 
 **Description:** Single quotes can be used to separate digits for readability.
 
@@ -65,7 +103,7 @@ double pi = 3.141'592'653'589;
 unsigned long long big = 0xDEAD'BEEF'CAFE'BABE;
 ```
 
-### 6. `std::make_unique`
+### 8. `std::make_unique`
 
 **Description:** Factory function for creating unique pointers, completing the set with `std::make_shared`.
 
@@ -204,11 +242,52 @@ void process(std::string_view sv) {
 process("hello");                        // String literal
 process(std::string("world"));           // std::string
 
-const char* text = "erview";
+const char* text = "viewer";
 process(std::string_view(text, 4));      // First 4 chars: "view"
 ```
 
-### 7. `if constexpr`
+### 7. `std::filesystem`
+
+**Description:** Portable path manipulation, directory traversal, and filesystem operations.
+
+```cpp
+#include <filesystem>
+#include <iostream>
+
+namespace fs = std::filesystem;
+
+fs::path config = fs::current_path() / "config" / "app.toml";
+
+if (fs::exists(config)) {
+    std::cout << "Config size: " << fs::file_size(config) << " bytes\n";
+}
+
+for (const auto& entry : fs::directory_iterator(".")) {
+    if (entry.path().extension() == ".cpp") {
+        std::cout << entry.path().filename() << "\n";
+    }
+}
+```
+
+### 8. `std::byte`
+
+**Description:** Type-safe representation of raw memory that is distinct from character and integer types.
+
+```cpp
+#include <cstddef>
+#include <vector>
+
+std::vector<std::byte> packet(4);
+
+packet[0] = std::byte{0xDE};
+packet[1] = std::byte{0xAD};
+packet[2] = std::byte{0xBE};
+packet[3] = std::byte{0xEF};
+
+auto first = std::to_integer<unsigned int>(packet[0]);  // 222
+```
+
+### 9. `if constexpr`
 
 **Description:** Compile-time conditional statements for templates.
 
@@ -229,7 +308,7 @@ auto a = get_value(x);    // Returns 42
 auto b = get_value(ptr);  // Returns 42 (dereferenced)
 ```
 
-### 8. Fold Expressions
+### 10. Fold Expressions
 
 **Description:** Apply binary operators to parameter packs.
 
@@ -248,7 +327,7 @@ int total = sum(1, 2, 3, 4, 5);  // 15
 print("Hello", " ", "World", "!");  // Hello World!
 ```
 
-### 9. Class Template Argument Deduction (CTAD)
+### 11. Class Template Argument Deduction (CTAD)
 
 **Description:** Template arguments can be deduced from constructor arguments.
 
@@ -268,7 +347,7 @@ public:
 Container c(42);  // Container<int>, no need for Container<int>
 ```
 
-### 10. Inline Variables
+### 12. Inline Variables
 
 **Description:** Variables can be declared `inline`, allowing definition in headers.
 
@@ -278,6 +357,31 @@ inline int global_counter = 0;  // Can be in header, one definition
 
 inline constexpr double pi = 3.141592653589793;
 ```
+
+### 13. Parallel Algorithms and Numeric Reductions
+
+**Description:** Standard algorithms can accept execution policies, and new numeric algorithms support parallel-friendly reductions and scans.
+
+```cpp
+#include <execution>
+#include <numeric>
+#include <vector>
+
+std::vector<int> values = {1, 2, 3, 4, 5};
+
+int sum = std::reduce(
+    std::execution::par,
+    values.begin(),
+    values.end(),
+    0
+);
+
+std::vector<int> prefix(values.size());
+std::inclusive_scan(values.begin(), values.end(), prefix.begin());
+// prefix: 1, 3, 6, 10, 15
+```
+
+Execution-policy support varies by standard library and platform, so this is a feature to verify in the target toolchain.
 
 ---
 
@@ -516,6 +620,87 @@ std::string aligned = std::format("{:>10} | {:<10}", "right", "left");
 std::string num = std::format("{:.2f}", 3.14159);  // "3.14"
 ```
 
+### 11. `std::jthread` and `std::stop_token`
+
+**Description:** `std::jthread` joins automatically and integrates cooperative cancellation.
+
+```cpp
+#include <chrono>
+#include <stop_token>
+#include <thread>
+
+std::jthread worker([](std::stop_token stop) {
+    while (!stop.stop_requested()) {
+        do_one_unit_of_work();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+});
+
+// Request cancellation; worker joins automatically when destroyed.
+worker.request_stop();
+```
+
+### 12. `std::source_location`
+
+**Description:** Capture call-site file, line, column, and function name without macros.
+
+```cpp
+#include <iostream>
+#include <source_location>
+#include <string_view>
+
+void log(
+    std::string_view message,
+    std::source_location location = std::source_location::current()
+) {
+    std::cout << location.file_name() << ":"
+              << location.line() << " "
+              << message << "\n";
+}
+
+log("failed to open config");
+```
+
+### 13. `<bit>` Utilities
+
+**Description:** Low-level bit operations become standard vocabulary.
+
+```cpp
+#include <bit>
+#include <cstdint>
+
+float value = 1.0f;
+auto bits = std::bit_cast<std::uint32_t>(value);
+
+constexpr auto native_endian = std::endian::native;
+
+int ones = std::popcount(0b1011u);  // 3
+```
+
+### 14. Latches, Barriers, and Semaphores
+
+**Description:** Standard synchronization primitives for coordinating threads.
+
+```cpp
+#include <barrier>
+#include <latch>
+#include <semaphore>
+#include <thread>
+
+std::latch ready(1);
+std::counting_semaphore<4> permits(2);
+
+std::jthread worker([&] {
+    ready.count_down();
+
+    permits.acquire();
+    process_shared_resource();
+    permits.release();
+});
+
+ready.wait();  // Wait until all expected arrivals happen
+```
+
 ---
 
 ## C++23 Features
@@ -719,108 +904,19 @@ void function_b() { function_c(); }
 void function_a() { function_b(); }
 ```
 
----
+### 11. `std::generator`
 
-## C++26 Features (Upcoming/Draft)
-
-### 1. Reflection
-
-**Description:** Compile-time introspection of types and members.
-
-```cpp
-// Proposed syntax
-template<typename T>
-void print_members() {
-    constexpr auto members = std::meta::members_of(^T);
-
-    for (constexpr auto member : members) {
-        std::println("{}", std::meta::name_of(member));
-    }
-}
-
-struct Person {
-    std::string name;
-    int age;
-};
-
-print_members<Person>();  // Prints: name, age
-```
-
-### 2. Pattern Matching
-
-**Description:** Powerful switch-like construct with destructuring.
-
-```cpp
-// Proposed syntax
-std::variant<int, std::string, float> value = 42;
-
-inspect (value) {
-    <int> i: std::println("int: {}", i);
-    <std::string> s: std::println("string: {}", s);
-    <float> f: std::println("float: {}", f);
-}
-
-// With structured bindings
-std::pair p{1, "hello"};
-inspect (p) {
-    [x, y]: std::println("pair: {} {}", x, y);
-}
-```
-
-### 3. Contracts
-
-**Description:** Preconditions, postconditions, and assertions.
-
-```cpp
-// Proposed syntax
-int divide(int a, int b)
-    pre(b != 0)      // Precondition
-    post(r: r == a / b)  // Postcondition
-{
-    return a / b;
-}
-
-class Buffer {
-    size_t size_;
-public:
-    [[assert: size_ > 0]]  // Class invariant
-    void resize(size_t new_size)
-        pre(new_size > 0)
-    {
-        size_ = new_size;
-    }
-};
-```
-
-### 4. `std::simd`
-
-**Description:** Portable SIMD (Single Instruction Multiple Data) operations.
-
-```cpp
-#include <simd>
-
-void multiply_arrays(float* a, float* b, float* result, size_t n) {
-    namespace simd = std::experimental::simd;
-    using Vec = simd::native_simd<float>;
-
-    for (size_t i = 0; i < n; i += Vec::size()) {
-        Vec va(&a[i], simd::element_aligned);
-        Vec vb(&b[i], simd::element_aligned);
-        Vec vr = va * vb;
-        vr.copy_to(&result[i], simd::element_aligned);
-    }
-}
-```
-
-### 5. `std::generator`
-
-**Description:** Standard coroutine-based generator.
+**Description:** Standard coroutine-based generator for pull-style lazy sequences.
 
 ```cpp
 #include <generator>
+#include <print>
+#include <ranges>
 
 std::generator<int> fibonacci() {
-    int a = 0, b = 1;
+    int a = 0;
+    int b = 1;
+
     while (true) {
         co_yield a;
         auto next = a + b;
@@ -834,110 +930,363 @@ for (int n : fibonacci() | std::views::take(10)) {
 }
 ```
 
-### 6. Explicit `this` Parameter (Enhancement)
+### 12. C++23 Ranges Additions
 
-**Description:** Unified function call syntax and better forwarding.
+**Description:** More range adaptors and algorithms make common sequence transformations easier to express.
 
 ```cpp
-struct Widget {
-    void process(this Widget& self) {
-        // Unified call syntax
-        self.internal();
-    }
+#include <print>
+#include <ranges>
+#include <string_view>
+#include <vector>
 
-    // Perfect forwarding of self
+std::vector<std::string_view> names = {"Ada", "Bjarne", "Grace"};
+std::vector<int> scores = {98, 95, 99};
+
+for (auto [name, score] : std::views::zip(names, scores)) {
+    std::println("{}: {}", name, score);
+}
+
+for (auto group : scores | std::views::chunk(2)) {
+    // Process fixed-size groups.
+}
+
+for (auto [index, name] : std::views::enumerate(names)) {
+    std::println("{}: {}", index, name);
+}
+```
+
+Notable additions include `zip`, `enumerate`, `chunk`, `slide`, `chunk_by`, `starts_with`, and `ends_with`. Standard-library support is still uneven across vendors.
+
+### 13. `std::move_only_function`
+
+**Description:** Type-erased callable wrapper for callbacks that are movable but not copyable.
+
+```cpp
+#include <functional>
+#include <memory>
+
+struct Job {
+    void run();
+};
+
+std::move_only_function<void()> task =
+    [job = std::make_unique<Job>()] {
+        job->run();
+    };
+
+task();
+```
+
+Use this when a callback owns move-only state and `std::function` is too restrictive.
+
+### 14. `std::out_ptr` and `std::inout_ptr`
+
+**Description:** Safer smart-pointer interop with C APIs that write through output pointer parameters.
+
+```cpp
+#include <memory>
+
+struct resource_handle;
+
+extern "C" int c_open_resource(resource_handle** out);
+extern "C" void c_close_resource(resource_handle*);
+
+std::unique_ptr<resource_handle, decltype(&c_close_resource)> handle(
+    nullptr,
+    c_close_resource
+);
+
+if (c_open_resource(std::out_ptr(handle)) == 0) {
+    use_resource(handle.get());
+}
+```
+
+This avoids manually calling `release()` and `reset()` around C APIs.
+
+### 15. `std::forward_like`
+
+**Description:** Forward one expression with the cv/ref qualifiers of another expression.
+
+```cpp
+#include <utility>
+
+struct Wrapper {
+    std::string value;
+
     template<typename Self>
-    auto get_data(this Self&& self) -> decltype(auto) {
-        return std::forward<Self>(self).data;
+    decltype(auto) get(this Self&& self) {
+        return std::forward_like<Self>(self.value);
     }
 };
 ```
 
-### 7. `std::hive`
+This is useful in generic code, especially with explicit object parameters.
 
-**Description:** Container optimized for stable element addresses and fast iteration.
+---
+
+## C++26 Features (Draft / Support Varies)
+
+The following items are expected C++26 features or are in the C++26 working draft. Treat examples as illustrative until your target compiler and standard library document support.
+
+### 1. Contracts
+
+**Description:** Function preconditions, function postconditions, and assertion statements.
+
+```cpp
+int divide(int numerator, int denominator)
+    pre(denominator != 0)
+    post(result: result * denominator == numerator)
+{
+    contract_assert(denominator != 0);
+    return numerator / denominator;
+}
+```
+
+Contracts make API assumptions visible in the function declaration. They are not class invariants, and they are not a replacement for normal runtime error handling.
+
+### 2. Static Reflection and `<meta>`
+
+**Description:** Compile-time introspection of declarations, types, and members.
+
+```cpp
+#include <meta>
+
+struct Person {
+    std::string name;
+    int age;
+};
+
+constexpr std::meta::info person_type = ^^Person;
+constexpr auto members = std::meta::nonstatic_data_members_of(person_type);
+
+// Current reflection papers use ^^ for reflection and [: ... :] for splicing.
+// Exact library names and examples may still require compiler-specific support.
+```
+
+Reflection is one of the largest C++26 changes, but implementation support is still emerging.
+
+### 3. `std::hive`
+
+**Description:** A sequence container that reuses erased element storage and keeps references/pointers to non-erased elements stable.
 
 ```cpp
 #include <hive>
+#include <memory>
 
 std::hive<Entity> entities;
 
-// Elements never move in memory (stable pointers)
-Entity* e1 = &entities.insert(Entity{...});
-Entity* e2 = &entities.insert(Entity{...});
+auto it = entities.insert(Entity{/* ... */});
+Entity* entity = std::addressof(*it);
 
-entities.erase(e1);  // Fast removal
+entities.erase(it);  // Invalidates references/pointers to the erased element only
 
-// Fast iteration despite holes
-for (auto& entity : entities) {
-    entity.update();
+for (Entity& item : entities) {
+    item.update();
 }
 ```
 
-### 8. `constexpr std::vector` and `std::string`
+Unlike `std::vector`, `std::hive` is designed for workloads with frequent insertion/removal where stable addresses matter.
 
-**Description:** More standard library containers usable at compile-time.
+### 4. `std::inplace_vector`
 
-```cpp
-constexpr std::vector<int> compile_time_sort() {
-    std::vector<int> v = {3, 1, 4, 1, 5, 9, 2, 6};
-    std::ranges::sort(v);
-    return v;
-}
-
-constexpr auto sorted = compile_time_sort();  // Computed at compile-time
-```
-
-### 9. `std::inplace_vector`
-
-**Description:** Fixed-capacity vector without heap allocation.
+**Description:** A fixed-capacity, variable-size sequence container with storage inside the container object.
 
 ```cpp
 #include <inplace_vector>
 
-std::inplace_vector<int, 10> vec;  // Max 10 elements, stack allocated
+std::inplace_vector<int, 10> values;  // Capacity is fixed at 10
 
-vec.push_back(1);
-vec.push_back(2);
-vec.push_back(3);
+values.push_back(1);
+values.push_back(2);
+values.push_back(3);
 
-// No dynamic allocation, but size limited
+// No separate dynamic allocation for elements, but size cannot exceed capacity.
 ```
 
-### 10. Hazard Pointers
+This is useful when a maximum size is known and allocation control matters.
 
-**Description:** Safe memory reclamation for lock-free data structures.
+### 5. `std::simd`
+
+**Description:** Portable data-parallel types for SIMD-style operations.
+
+```cpp
+#include <simd>
+
+void multiply_arrays(const float* left, const float* right, float* out, std::size_t count) {
+    using Vec = std::native_simd<float>;
+
+    std::size_t i = 0;
+    for (; i + Vec::size() <= count; i += Vec::size()) {
+        Vec a(left + i, std::element_aligned);
+        Vec b(right + i, std::element_aligned);
+        (a * b).copy_to(out + i, std::element_aligned);
+    }
+
+    for (; i < count; ++i) {
+        out[i] = left[i] * right[i];
+    }
+}
+```
+
+The goal is portable vectorization without writing platform-specific intrinsics.
+
+### 6. Hazard Pointers and RCU
+
+**Description:** Standard library facilities for safe memory reclamation in lock-free and read-mostly concurrent data structures.
 
 ```cpp
 #include <hazard_pointer>
 
+// Conceptual shape only: protect a pointer before dereferencing it,
+// then retire removed nodes so reclamation waits for active readers.
 std::atomic<Node*> head;
 
-void reader_thread() {
-    std::hazard_pointer hp = std::make_hazard_pointer();
-    Node* node = hp.protect(head);  // Protected from reclamation
+void reader() {
+    auto hazard = std::make_hazard_pointer();
+    Node* node = hazard.protect(head);
 
-    if (node) {
-        use(node->data);  // Safe to use
+    if (node != nullptr) {
+        use(node->data);
+    }
+}
+```
+
+These facilities are specialized tools. Most application code should prefer higher-level synchronization unless lock-free reclamation is truly needed.
+
+### 7. `std::text_encoding`
+
+**Description:** A standard vocabulary type for identifying text encodings.
+
+```cpp
+#include <print>
+#include <text_encoding>
+
+std::text_encoding encoding = std::text_encoding::environment();
+std::println("Environment encoding: {}", encoding.name());
+
+if (std::text_encoding::environment_is<std::text_encoding::UTF8>()) {
+    // Environment encoding is UTF-8.
+}
+```
+
+This is useful for code that must reason about platform text encoding rather than assuming UTF-8 everywhere.
+
+### 8. `std::execution` / Senders and Receivers
+
+**Description:** A standard framework for composing asynchronous work as sender/receiver task graphs.
+
+```cpp
+#include <execution>
+#include <thread>
+#include <utility>
+
+namespace ex = std::execution;
+
+auto work =
+    ex::just(40)
+    | ex::then([](int value) {
+          return value + 2;
+      });
+
+auto result = std::this_thread::sync_wait(std::move(work));
+```
+
+The important idea is composability: senders describe work, receivers consume completion, and algorithms connect pieces into asynchronous pipelines. Implementation support is still early.
+
+### 9. Pack Indexing
+
+**Description:** Access a specific element of a parameter pack by compile-time index.
+
+```cpp
+#include <print>
+
+template<typename... Ts>
+using first_type = Ts...[0];
+
+void print_first(auto... values) {
+    std::println("{}", values...[0]);
+}
+
+print_first("first", "second", "third");  // first
+```
+
+Pack indexing removes a lot of tuple-conversion boilerplate from template metaprogramming.
+
+### 10. `std::function_ref` and `std::copyable_function`
+
+**Description:** More precise callable wrappers for non-owning and qualifier-aware callback APIs.
+
+```cpp
+#include <functional>
+#include <span>
+
+void for_each_value(
+    std::span<const int> values,
+    std::function_ref<void(int)> visitor
+) {
+    for (int value : values) {
+        visitor(value);
     }
 }
 
-void writer_thread() {
-    Node* old = head.exchange(new_node);
-    std::retire(old);  // Will be deleted when no hazard pointers reference it
-}
+std::copyable_function<int(int)> scale = [factor = 2](int value) {
+    return value * factor;
+};
 ```
+
+`std::function_ref` is for borrowing a callable without owning it. `std::copyable_function` is a stricter successor-style wrapper that preserves cv/ref/noexcept call signatures better than `std::function`.
+
+### 11. More `constexpr` Standard Library Algorithms
+
+**Description:** More standard library algorithms become usable during constant evaluation.
+
+```cpp
+#include <algorithm>
+#include <array>
+
+consteval auto sorted_values() {
+    std::array values{3, 1, 4, 1, 5, 9};
+    std::ranges::stable_sort(values);
+    return values;
+}
+
+constexpr auto values = sorted_values();
+```
+
+This continues the long-running trend of making normal library vocabulary usable in compile-time code.
+
+### Still Proposed / Not Settled C++26 Features
+
+These are important to know about, but should not be presented as available C++26 syntax in production code:
+
+- **Pattern matching**: active proposal work currently uses `match`-expression syntax, not the older `inspect` examples.
+- **Additional reflection facilities**: the core direction is C++26, but examples should be checked against the latest paper and compiler implementation.
 
 ---
 
 ## Summary
 
-This review covers the major features introduced in modern C++ from C++14 to C++26:
+This review covers selected features introduced in modern C++ from C++14 to C++26:
 
-- **C++14**: Foundation improvements (generic lambdas, return type deduction)
-- **C++17**: Quality of life (structured bindings, optional, variant, string_view)
-- **C++20**: Major revolution (concepts, ranges, coroutines, modules)
-- **C++23**: Refinements (expected, print, deducing this)
-- **C++26**: Future innovations (reflection, pattern matching, contracts)
+- **C++14**: Foundation improvements such as generic lambdas, init-capture, relaxed `constexpr`, return type deduction, variable templates, digit separators, and `std::make_unique`
+- **C++17**: Quality-of-life and vocabulary features such as structured bindings, `std::optional`, `std::variant`, `std::string_view`, `std::filesystem`, `std::byte`, fold expressions, CTAD, inline variables, and parallel algorithms
+- **C++20**: Major language and library expansion through concepts, ranges, coroutines, modules, `<=>`, `std::span`, `consteval`, `std::format`, `std::jthread`, `std::stop_token`, `std::source_location`, `<bit>`, and synchronization primitives
+- **C++23**: Refinements such as `std::expected`, `std::print`, explicit object parameters, multidimensional `operator[]`, `std::mdspan`, `std::flat_map`, `std::stacktrace`, `std::generator`, C++23 range adaptors, `std::move_only_function`, `std::out_ptr`, and `std::forward_like`
+- **C++26**: Draft features such as contracts, reflection, `std::hive`, `std::inplace_vector`, `std::simd`, hazard pointers/RCU, `std::execution`, pack indexing, callable wrapper refinements, and additional constexpr/library refinements
 
-Each version builds upon the previous, making C++ more expressive, safer, and easier to use while maintaining backward compatibility and zero-overhead abstraction principles.
+Each version builds upon the previous, making C++ more expressive, safer, and easier to use while preserving the language's focus on explicit control and zero-overhead abstractions.
+
+## References for Draft C++26 Status
+
+- cppreference C++17 feature summary - https://en.cppreference.com/w/cpp/17.html
+- cppreference C++20 feature summary - https://en.cppreference.com/cpp/20
+- cppreference C++23 feature summary - https://en.cppreference.com/cpp/23
+- WG21 P2996R13: Reflection for C++26 - https://www.open-std.org/jtc1/SC22/wg21/docs/papers/2025/p2996r13.html
+- WG21 P2900R14: Contracts for C++ - https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p2900r14.pdf
+- WG21 P0447R28: `std::hive` - https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2024/p0447r28.html
+- WG21 P2688R5: Pattern Matching `match` Expression - https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p2688r5.html
+- cppreference C++26 compiler/library support tables - https://en.cppreference.com/cpp/compiler_support/26
+- cppreference C++26 execution library - https://en.cppreference.com/cpp/execution
+- cppreference C++26 pack indexing - https://en.cppreference.com/cpp/language/pack_indexing
+- cppreference C++26 `std::function_ref` - https://en.cppreference.com/cpp/utility/functional/function_ref
